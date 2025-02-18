@@ -5,35 +5,98 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+# Set C++ standard
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # find dependencies
+find_package(PkgConfig REQUIRED)
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(audio_common_msgs REQUIRED)
-find_package(sdl2 REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(SDL2 REQUIRED)
 
-add_executable(audio_capture_node src/audio_capture_node.cpp)
+# Add cmake modules directory
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
+# SDL2 Audio utilities library
+add_library(sdl2_audio_utils
+  src/audio/audio_async.cpp
+)
+target_include_directories(sdl2_audio_utils PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_link_libraries(sdl2_audio_utils PUBLIC
+  ${SDL2_LIBRARIES}
+)
+target_compile_features(sdl2_audio_utils PUBLIC cxx_std_17)
+
+# Audio Capture Node
+add_executable(audio_capture_node src/nodes/audio_capture_node.cpp)
 target_include_directories(audio_capture_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
-target_compile_features(audio_capture_node PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
-ament_target_dependencies(
-  audio_capture_node
-  "rclcpp"
-  "audio_common_msgs"
-  "sdl2"
+target_compile_features(audio_capture_node PUBLIC cxx_std_17)
+target_link_libraries(audio_capture_node
+  sdl2_audio_utils
+)
+ament_target_dependencies(audio_capture_node
+  rclcpp
+  std_msgs
 )
 
-install(TARGETS audio_capture_node
-  DESTINATION lib/${PROJECT_NAME})
+# VAD Node
+add_executable(vad_node src/nodes/vad_node.cpp)
+target_include_directories(vad_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
+target_compile_features(vad_node PUBLIC cxx_std_17)
+target_link_libraries(vad_node
+  sdl2_audio_utils
+)
+ament_target_dependencies(vad_node
+  rclcpp
+  std_msgs
+)
+
+# Wake Word Node
+add_executable(wake_word_node src/nodes/wake_word_node.cpp)
+target_include_directories(wake_word_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
+target_compile_features(wake_word_node PUBLIC cxx_std_17)
+target_link_libraries(wake_word_node
+  sdl2_audio_utils
+)
+ament_target_dependencies(wake_word_node
+  rclcpp
+  std_msgs
+)
+
+# Install targets
+install(TARGETS
+  audio_capture_node
+  vad_node
+  wake_word_node
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+# Install include directory
+install(DIRECTORY include/
+  DESTINATION include/${PROJECT_NAME}
+)
+
+# Install launch and config files
+install(DIRECTORY
+  launch
+  config
+  DESTINATION share/${PROJECT_NAME}/
+)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
-  # the following line skips the linter which checks for copyrights
-  # comment the line when a copyright and license is added to all source files
   set(ament_cmake_copyright_FOUND TRUE)
-  # the following line skips cpplint (only works in a git repo)
-  # comment the line when this package is in a git repo and when
-  # a copyright and license is added to all source files
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 endif()
