@@ -30,3 +30,11 @@
 *.exe
 *.out
 *.app
+
+build/
+install/
+log/
+*.pyc
+__pycache__/
+.vscode/
+" > .gitignore
