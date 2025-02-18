@@ -10,15 +10,26 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Add cmake modules directory
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
 # find dependencies
 find_package(PkgConfig REQUIRED)
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(SDL2 REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
 
-# Add cmake modules directory
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+# Generate ROS messages
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/AudioData.msg"
+  DEPENDENCIES std_msgs
+)
+
+# Need to link message interfaces
+rosidl_get_typesupport_target(cpp_typesupport_target 
+  ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 # SDL2 Audio utilities library
 add_library(sdl2_audio_utils
@@ -26,7 +37,10 @@ add_library(sdl2_audio_utils
 )
 target_include_directories(sdl2_audio_utils PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
+  $<INSTALL_INTERFACE:include>
+  ${SDL2_INCLUDE_DIRS}
+)
+
 target_link_libraries(sdl2_audio_utils PUBLIC
   ${SDL2_LIBRARIES}
 )
@@ -36,49 +50,57 @@ target_compile_features(sdl2_audio_utils PUBLIC cxx_std_17)
 add_executable(audio_capture_node src/nodes/audio_capture_node.cpp)
 target_include_directories(audio_capture_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
+  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
+)
+
 target_compile_features(audio_capture_node PUBLIC cxx_std_17)
+
 target_link_libraries(audio_capture_node
   sdl2_audio_utils
+  ${SDL2_LIBRARIES}  
 )
+target_link_libraries(audio_capture_node "${cpp_typesupport_target}")
+
 ament_target_dependencies(audio_capture_node
   rclcpp
   std_msgs
 )
 
-# VAD Node
-add_executable(vad_node src/nodes/vad_node.cpp)
-target_include_directories(vad_node PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
-target_compile_features(vad_node PUBLIC cxx_std_17)
-target_link_libraries(vad_node
-  sdl2_audio_utils
-)
-ament_target_dependencies(vad_node
-  rclcpp
-  std_msgs
-)
 
-# Wake Word Node
-add_executable(wake_word_node src/nodes/wake_word_node.cpp)
-target_include_directories(wake_word_node PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
-target_compile_features(wake_word_node PUBLIC cxx_std_17)
-target_link_libraries(wake_word_node
-  sdl2_audio_utils
-)
-ament_target_dependencies(wake_word_node
-  rclcpp
-  std_msgs
-)
+
+# # VAD Node
+# add_executable(vad_node src/nodes/vad_node.cpp)
+# target_include_directories(vad_node PUBLIC
+#   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+#   $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
+# target_compile_features(vad_node PUBLIC cxx_std_17)
+# target_link_libraries(vad_node
+#   sdl2_audio_utils
+# )
+# ament_target_dependencies(vad_node
+#   rclcpp
+#   std_msgs
+# )
+
+# # Wake Word Node
+# add_executable(wake_word_node src/nodes/wake_word_node.cpp)
+# target_include_directories(wake_word_node PUBLIC
+#   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+#   $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
+# target_compile_features(wake_word_node PUBLIC cxx_std_17)
+# target_link_libraries(wake_word_node
+#   sdl2_audio_utils
+# )
+# ament_target_dependencies(wake_word_node
+#   rclcpp
+#   std_msgs
+# )
 
 # Install targets
 install(TARGETS
   audio_capture_node
-  vad_node
-  wake_word_node
+  # vad_node
+  # wake_word_node
   DESTINATION lib/${PROJECT_NAME}
 )
 

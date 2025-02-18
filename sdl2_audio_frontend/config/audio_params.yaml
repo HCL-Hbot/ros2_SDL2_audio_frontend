@@ -1,0 +1,7 @@
+/**:
+  ros__parameters:
+    audio_capture_node:
+      sample_rate: 16000
+      capture_period_ms: 10
+      buffer_length_ms: 1000
+      device_id: -1  # Use default audio device
