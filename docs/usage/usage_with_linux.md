@@ -65,9 +65,20 @@ rm -rf ~/.ros
 source install/setup.bash
 ```
 
+7. With the environment sourced, we can run executables built by colcon. Let's run using the launch file:
+
+```bash
+ros2 launch sdl2_audio_frontend audio_frontend.launch.py
+```
+
+8. In another terminal, you can check the audio data (don’t forget to source the setup script):
+```bash
+ros2 topic echo /audio/raw
+```
+
 TODO
 <!-- 
-7. With the environment sourced, we can run executables built by colcon. Let’s run the camera node from the examples:
+Let’s run the camera node from the examples:
 
 ```bash
 ros2 run v4l2_camera v4l2_camera_node
