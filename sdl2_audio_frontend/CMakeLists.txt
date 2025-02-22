@@ -96,6 +96,16 @@ ament_target_dependencies(audio_capture_node
 #   std_msgs
 # )
 
+# Install library
+install(TARGETS
+  sdl2_audio_utils
+  EXPORT ${PROJECT_NAME}
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
+  RUNTIME DESTINATION bin
+  INCLUDES DESTINATION include
+)
+
 # Install targets
 install(TARGETS
   audio_capture_node
@@ -115,6 +125,8 @@ install(DIRECTORY
   config
   DESTINATION share/${PROJECT_NAME}/
 )
+
+
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
