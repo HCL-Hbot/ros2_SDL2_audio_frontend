@@ -1,0 +1,5 @@
+vad_node:
+  ros__parameters:
+    energy_threshold: 0.005    # Adjust based on your microphone sensitivity
+    min_samples_for_vad: 160   # 10ms of audio at 16kHz
+    hold_time_sec: 0.5         # Hold "active" state for 0.5 seconds after voice stops

@@ -66,21 +66,20 @@ ament_target_dependencies(audio_capture_node
   std_msgs
 )
 
-
-
-# # VAD Node
-# add_executable(vad_node src/nodes/vad_node.cpp)
-# target_include_directories(vad_node PUBLIC
-#   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-#   $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
-# target_compile_features(vad_node PUBLIC cxx_std_17)
-# target_link_libraries(vad_node
-#   sdl2_audio_utils
-# )
-# ament_target_dependencies(vad_node
-#   rclcpp
-#   std_msgs
-# )
+# VAD Node
+add_executable(vad_node src/nodes/vad_node.cpp)
+target_include_directories(vad_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
+target_compile_features(vad_node PUBLIC cxx_std_17)
+target_link_libraries(vad_node
+  sdl2_audio_utils
+  "${cpp_typesupport_target}"
+)
+ament_target_dependencies(vad_node
+  rclcpp
+  std_msgs
+)
 
 # # Wake Word Node
 # add_executable(wake_word_node src/nodes/wake_word_node.cpp)
@@ -109,7 +108,7 @@ install(TARGETS
 # Install targets
 install(TARGETS
   audio_capture_node
-  # vad_node
+  vad_node
   # wake_word_node
   DESTINATION lib/${PROJECT_NAME}
 )

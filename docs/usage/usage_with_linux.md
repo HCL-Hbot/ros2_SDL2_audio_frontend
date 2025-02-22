@@ -23,9 +23,7 @@ Use [this guide](https://code.visualstudio.com/docs/setup/linux) instead, which 
 
 ## Compiling and running the example
 
-The library contains a ROS2 package example demonstrating the usage and functionality of this library. 
-
-To compile and run this example:
+To demonstrate the usage of the ROS2 package, compile and run the nodes:
 
 1. Clone this repo:
 ```
@@ -71,29 +69,30 @@ source install/setup.bash
 ros2 launch sdl2_audio_frontend audio_frontend.launch.py
 ```
 
-8. In another terminal, you can check the audio data (don’t forget to source the setup script):
+8. In another terminal, you can verify that the nodes are publishing to their respective topics (don’t forget to source the setup script):
 ```bash
-ros2 topic echo /audio/raw
+ros2 topic list
+/audio/raw
+/parameter_events
+/rosout
+/voice_detected
+```
+You should see at least these topics:
+- /audio/raw (from audio_capture_node)
+- /voice_detected (from vad_node)
+
+
+9. You can check the topic published by the VAD node (don’t forget to source the setup script):
+```bash
+ros2 topic echo /voice_detected
 ```
 
-TODO
-<!-- 
-Let’s run the camera node from the examples:
-
-```bash
-ros2 run v4l2_camera v4l2_camera_node
+You should see a boolean being published
 ```
-
-8. In another terminal, let’s run the face detector node (don’t forget to source the setup script):6
-```bash
-ros2 run face_detector face_detector_node
+...
+---
+data: false
+---
+data: false
+...
 ```
-
-7. In yet another terminal, let’s run the viewer node:
-
-```bash
-ros2 run face_detector face_detector_viewer
-```
-
-Now, you should see the camera stream, with annotations produced by the face detector.
- -->
