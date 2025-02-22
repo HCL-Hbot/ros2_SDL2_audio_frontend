@@ -5,12 +5,6 @@ namespace sdl2_audio_frontend {
 AudioCaptureNode::AudioCaptureNode(const rclcpp::NodeOptions& options)
     : Node("audio_capture_node", options) {
 
-    // // Initialize SDL first
-    // if (SDL_Init(SDL_INIT_AUDIO) < 0) {
-    //     RCLCPP_ERROR(get_logger(), "SDL could not initialize! SDL Error: %s", SDL_GetError());
-    //     throw std::runtime_error("SDL initialization failed");
-    // }        
-    
     // Declare and load parameters
     declare_parameters();
     load_parameters();
@@ -23,7 +17,7 @@ AudioCaptureNode::AudioCaptureNode(const rclcpp::NodeOptions& options)
         RCLCPP_WARN(get_logger(), "Failed to initialize with device_id %d, trying with 0", device_id_);
         
         // Try with first available device (index 0)
-        if (numDevices > 0 && !audio_->init(0, sample_rate_)) {
+        if (!audio_->init(0, sample_rate_)) {
             RCLCPP_ERROR(get_logger(), "Failed to initialize audio capture");
             throw std::runtime_error("Audio initialization failed");
         }
