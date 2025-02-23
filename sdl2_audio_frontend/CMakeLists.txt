@@ -109,6 +109,7 @@ target_link_libraries(wake_word_node
   sdl2_audio_utils
   Lowwi  # Link with Lowwi library
   "${cpp_typesupport_target}"
+  ncurses
 )
 
 ament_target_dependencies(wake_word_node
@@ -128,15 +129,9 @@ install(TARGETS
   INCLUDES DESTINATION include
 )
 
-install(FILES 
-    "${Lowwi_SOURCE_DIR}/models/melspectrogram.onnx"
-    "${Lowwi_SOURCE_DIR}/models/embedding_model.onnx"
-    DESTINATION share/${PROJECT_NAME}/models
-)
-
 install(DIRECTORY 
-    "${Lowwi_SOURCE_DIR}/models/example_wakewords"
-    DESTINATION share/${PROJECT_NAME}/models
+    "${Lowwi_SOURCE_DIR}/models"
+    DESTINATION ${CMAKE_CURRENT_LIST_DIR}
 )
 
 # Custom command to copy models during build (for development)
