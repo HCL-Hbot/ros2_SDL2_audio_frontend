@@ -11,9 +11,11 @@ ros2_SDL2_audio_frontend/
 │   │   ├── overview.md
 │   │   ├── usage_with_linux.md
 │   ├── index.md
+│   ├── project_knowledge.md
 ├── sdl2_audio_frontend/
 │   ├── config/
 │   │   ├── audio_params.yaml
+│   │   ├── vad_params.yaml
 │   ├── include/
 │   │   ├── sdl2_audio_frontend/
 │   │   │   ├── audio/
@@ -167,7 +169,48 @@ private:
 
 # sdl2_audio_frontend/include/sdl2_audio_frontend/nodes/vad_node.hpp
 ```cpp
+#ifndef SDL2_AUDIO_FRONTEND_VAD_NODE_HPP
+#define SDL2_AUDIO_FRONTEND_VAD_NODE_HPP
 
+#include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/bool.hpp>
+#include <sdl2_audio_frontend/msg/audio_data.hpp>
+
+namespace sdl2_audio_frontend {
+
+class VADNode : public rclcpp::Node {
+public:
+    explicit VADNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
+    ~VADNode() = default;
+
+private:
+    // Parameters
+    void declare_parameters();
+    void load_parameters();
+
+    // Audio callback
+    void audio_callback(const msg::AudioData::SharedPtr msg);
+
+    // VAD implementation
+    bool detect_voice_activity(const std::vector<float>& audio_data);
+    
+    // ROS subscribers and publishers
+    rclcpp::Subscription<msg::AudioData>::SharedPtr audio_sub_;
+    rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr voice_detected_pub_;
+    
+    // VAD parameters
+    float energy_threshold_;        // Energy threshold for VAD
+    int min_samples_for_vad_;       // Minimum number of samples required for VAD
+    float hold_time_sec_;           // How long to hold the VAD state after voice stops
+    
+    // State tracking
+    bool current_vad_state_;        // Current VAD state
+    rclcpp::Time last_voice_time_;  // Time when voice was last detected
+};
+
+} // namespace sdl2_audio_frontend
+
+#endif // SDL2_AUDIO_FRONTEND_VAD_NODE_HPP
 ```
 
 
@@ -209,6 +252,13 @@ bool AudioAsync::init(int capture_id, int playback_id, int sample_rate) {
 
     SDL_SetHintWithPriority(SDL_HINT_AUDIO_RESAMPLING_MODE, "medium", SDL_HINT_OVERRIDE);
 
+    // List available capture devices
+    int nDevices = SDL_GetNumAudioDevices(SDL_TRUE);
+    SDL_Log("Found %d capture devices:\n", nDevices);
+    for (int i = 0; i < nDevices; i++) {
+        SDL_Log("- Capture device #%d: '%s'\n", i, SDL_GetAudioDeviceName(i, SDL_TRUE));
+    }
+
     // Configure capture spec
     SDL_AudioSpec capture_spec_requested, capture_spec_obtained;
     SDL_zero(capture_spec_requested);
@@ -224,13 +274,33 @@ bool AudioAsync::init(int capture_id, int playback_id, int sample_rate) {
     };
     capture_spec_requested.userdata = this;
 
-    // Open capture device if requested
-    if (capture_id >= 0) {
-        const char* device_name = capture_id > 0 ? SDL_GetAudioDeviceName(capture_id, SDL_TRUE) : nullptr;
-        capture_device_ = SDL_OpenAudioDevice(device_name, SDL_TRUE, 
-                                            &capture_spec_requested, &capture_spec_obtained, 0);
-        if (!capture_device_) {
-            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't open capture device: %s\n", SDL_GetError());
+    // Open capture device
+    const char* device_name = nullptr;  // Default device
+    
+    // If specific device requested, try to use that
+    if (capture_id >= 0 && capture_id < SDL_GetNumAudioDevices(SDL_TRUE)) {
+        device_name = SDL_GetAudioDeviceName(capture_id, SDL_TRUE);
+        SDL_Log("Attempting to open specific capture device: %s\n", device_name);
+    } else {
+        SDL_Log("Attempting to open default capture device\n");
+    }
+    
+    capture_device_ = SDL_OpenAudioDevice(device_name, SDL_TRUE, 
+                                        &capture_spec_requested, &capture_spec_obtained, 0);
+    
+    if (!capture_device_) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't open capture device: %s\n", SDL_GetError());
+        
+        // If we failed with specified device, try with default
+        if (device_name != nullptr) {
+            SDL_Log("Trying to open default capture device instead\n");
+            capture_device_ = SDL_OpenAudioDevice(nullptr, SDL_TRUE, 
+                                                &capture_spec_requested, &capture_spec_obtained, 0);
+        }
+        
+        // If still no capture device, check if we're opening playback
+        if (!capture_device_ && playback_id < 0) {
+            SDL_Log("No capture device opened and no playback requested\n");
             return false;
         }
     }
@@ -252,29 +322,32 @@ bool AudioAsync::init(int capture_id, int playback_id, int sample_rate) {
 
     // Open playback device if requested
     if (playback_id >= 0) {
-        const char* device_name = playback_id > 0 ? SDL_GetAudioDeviceName(playback_id, SDL_FALSE) : nullptr;
-        playback_device_ = SDL_OpenAudioDevice(device_name, SDL_FALSE,
+        const char* play_device_name = playback_id > 0 ? 
+            SDL_GetAudioDeviceName(playback_id, SDL_FALSE) : nullptr;
+        
+        playback_device_ = SDL_OpenAudioDevice(play_device_name, SDL_FALSE,
                                              &playback_spec_requested, &playback_spec_obtained, 0);
+        
         if (!playback_device_) {
             SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't open playback device: %s\n", SDL_GetError());
-            if (capture_device_) {
-                SDL_CloseAudioDevice(capture_device_);
-                capture_device_ = 0;
-            }
-            return false;
+            // Continue anyway, playback is optional
         }
     }
 
-    if (!capture_device_ && !playback_device_) {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "No audio devices opened\n");
-        return false;
+    // Update sample rate from the device we successfully opened
+    if (capture_device_) {
+        sample_rate_ = capture_spec_obtained.freq;
+        SDL_Log("Opened capture device with sample rate: %d\n", sample_rate_);
+    } else if (playback_device_) {
+        sample_rate_ = playback_spec_obtained.freq;
+        SDL_Log("No capture device, using playback sample rate: %d\n", sample_rate_);
     }
 
-    sample_rate_ = capture_device_ ? capture_spec_obtained.freq : playback_spec_obtained.freq;
+    // Resize buffers
     capture_buffer_.resize((sample_rate_ * len_ms_) / 1000);
     playback_buffer_.reserve(sample_rate_);  // Reserve 1 second
 
-    return true;
+    return (capture_device_ != 0 || playback_device_ != 0);
 }
 
 bool AudioAsync::resume() {
@@ -459,12 +532,111 @@ int main(int argc, char* argv[]) {
 
 # sdl2_audio_frontend/src/nodes/vad_node.cpp
 ```cpp
-#include <rclcpp/rclcpp.hpp>
+#include "sdl2_audio_frontend/nodes/vad_node.hpp"
 
+namespace sdl2_audio_frontend {
+
+VADNode::VADNode(const rclcpp::NodeOptions& options)
+    : Node("vad_node", options),
+      current_vad_state_(false),
+      last_voice_time_(this->now()) {
+    
+    // Declare and load parameters
+    declare_parameters();
+    load_parameters();
+    
+    // Create publisher for voice activity detection
+    voice_detected_pub_ = create_publisher<std_msgs::msg::Bool>("voice_detected", 10);
+    
+    // Subscribe to audio data
+    audio_sub_ = create_subscription<msg::AudioData>(
+        "audio/raw", 
+        10, 
+        std::bind(&VADNode::audio_callback, this, std::placeholders::_1));
+    
+    RCLCPP_INFO(get_logger(), "VAD node initialized");
+    RCLCPP_INFO(get_logger(), "Energy threshold: %f", energy_threshold_);
+    RCLCPP_INFO(get_logger(), "Min samples for VAD: %d", min_samples_for_vad_);
+    RCLCPP_INFO(get_logger(), "Hold time: %f seconds", hold_time_sec_);
+}
+
+void VADNode::declare_parameters() {
+    declare_parameter("energy_threshold", 0.01);   // Default energy threshold
+    declare_parameter("min_samples_for_vad", 160); // Default 10ms @ 16kHz
+    declare_parameter("hold_time_sec", 0.5);       // Default hold time in seconds
+}
+
+void VADNode::load_parameters() {
+    energy_threshold_ = get_parameter("energy_threshold").as_double();
+    min_samples_for_vad_ = get_parameter("min_samples_for_vad").as_int();
+    hold_time_sec_ = get_parameter("hold_time_sec").as_double();
+}
+
+void VADNode::audio_callback(const msg::AudioData::SharedPtr msg) {
+    // Convert raw audio bytes to float samples
+    std::vector<float> audio_samples;
+    audio_samples.resize(msg->samples);
+    
+    if (msg->format == 0) { // F32 format
+        // Simply copy the data (it's already float)
+        std::memcpy(audio_samples.data(), msg->data.data(), msg->data.size());
+    } else {
+        RCLCPP_WARN_ONCE(get_logger(), "Unsupported audio format: %d", msg->format);
+        return;
+    }
+    
+    // Detect voice activity in the audio
+    bool voice_active = detect_voice_activity(audio_samples);
+    
+    // Handle hold time logic
+    if (voice_active) {
+        last_voice_time_ = this->now();
+        
+        if (!current_vad_state_) {
+            current_vad_state_ = true;
+            RCLCPP_DEBUG(get_logger(), "Voice activity started");
+        }
+    } else {
+        // Check if we're within the hold time
+        rclcpp::Duration time_since_voice = this->now() - last_voice_time_;
+        if (current_vad_state_ && time_since_voice.seconds() > hold_time_sec_) {
+            current_vad_state_ = false;
+            RCLCPP_DEBUG(get_logger(), "Voice activity ended");
+        }
+    }
+    
+    // Publish the current VAD state
+    auto vad_msg = std::make_unique<std_msgs::msg::Bool>();
+    vad_msg->data = current_vad_state_;
+    voice_detected_pub_->publish(std::move(vad_msg));
+}
+
+bool VADNode::detect_voice_activity(const std::vector<float>& audio_data) {
+    // Simple energy-based VAD
+    if (audio_data.size() < static_cast<size_t>(min_samples_for_vad_)) {
+        return false;
+    }
+    
+    // Calculate energy of the audio
+    float energy = 0.0f;
+    for (float sample : audio_data) {
+        energy += sample * sample;
+    }
+    energy /= audio_data.size();
+    
+    // Log energy level for debugging
+    RCLCPP_DEBUG(get_logger(), "Audio energy: %f", energy);
+    
+    // Compare with threshold
+    return energy > energy_threshold_;
+}
+
+} // namespace sdl2_audio_frontend
+
+// Entry point
 int main(int argc, char* argv[]) {
     rclcpp::init(argc, argv);
-    auto node = std::make_shared<rclcpp::Node>("vad_node");
-    rclcpp::spin(node);
+    rclcpp::spin(std::make_shared<sdl2_audio_frontend::VADNode>());
     rclcpp::shutdown();
     return 0;
 }
@@ -493,17 +665,23 @@ namespace sdl2_audio_frontend {
 
 AudioCaptureNode::AudioCaptureNode(const rclcpp::NodeOptions& options)
     : Node("audio_capture_node", options) {
-    
+
     // Declare and load parameters
     declare_parameters();
     load_parameters();
 
-    // Initialize SDL audio
+    // Log available audio devices
+    RCLCPP_INFO(get_logger(), "Checking available audio devices...");
     audio_ = std::make_unique<AudioAsync>(buffer_length_ms_);
     
     if (!audio_->init(device_id_, sample_rate_)) {
-        RCLCPP_ERROR(get_logger(), "Failed to initialize audio capture");
-        throw std::runtime_error("Audio initialization failed");
+        RCLCPP_WARN(get_logger(), "Failed to initialize with device_id %d, trying with 0", device_id_);
+        
+        // Try with first available device (index 0)
+        if (!audio_->init(0, sample_rate_)) {
+            RCLCPP_ERROR(get_logger(), "Failed to initialize audio capture");
+            throw std::runtime_error("Audio initialization failed");
+        }
     }
 
     // Create publisher
@@ -655,21 +833,20 @@ ament_target_dependencies(audio_capture_node
   std_msgs
 )
 
-
-
-# # VAD Node
-# add_executable(vad_node src/nodes/vad_node.cpp)
-# target_include_directories(vad_node PUBLIC
-#   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-#   $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
-# target_compile_features(vad_node PUBLIC cxx_std_17)
-# target_link_libraries(vad_node
-#   sdl2_audio_utils
-# )
-# ament_target_dependencies(vad_node
-#   rclcpp
-#   std_msgs
-# )
+# VAD Node
+add_executable(vad_node src/nodes/vad_node.cpp)
+target_include_directories(vad_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
+target_compile_features(vad_node PUBLIC cxx_std_17)
+target_link_libraries(vad_node
+  sdl2_audio_utils
+  "${cpp_typesupport_target}"
+)
+ament_target_dependencies(vad_node
+  rclcpp
+  std_msgs
+)
 
 # # Wake Word Node
 # add_executable(wake_word_node src/nodes/wake_word_node.cpp)
@@ -685,10 +862,20 @@ ament_target_dependencies(audio_capture_node
 #   std_msgs
 # )
 
+# Install library
+install(TARGETS
+  sdl2_audio_utils
+  EXPORT ${PROJECT_NAME}
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
+  RUNTIME DESTINATION bin
+  INCLUDES DESTINATION include
+)
+
 # Install targets
 install(TARGETS
   audio_capture_node
-  # vad_node
+  vad_node
   # wake_word_node
   DESTINATION lib/${PROJECT_NAME}
 )
@@ -704,6 +891,8 @@ install(DIRECTORY
   config
   DESTINATION share/${PROJECT_NAME}/
 )
+
+
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
