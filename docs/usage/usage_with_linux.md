@@ -14,6 +14,11 @@ Make sure SDL2 development libraries are installed as well:
 sudo apt-get install libsdl2-dev
 ```
 
+We also need the ncurses (new curses) library, which is a free software emulation of curses for text-based user interfaces:
+```bash
+sudo apt-get install libncurses-dev
+```
+
 If you have not installed VSCode yet, do not install using APT in ubuntu as it will install the sandboxed snap version.
 
 **Which has many issues due to the sandbox environment**
