@@ -14,7 +14,8 @@ class WakeWordNode : public rclcpp::Node {  // Remove std::enable_shared_from_th
 public:
     explicit WakeWordNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
     ~WakeWordNode();
-
+    void configure_wake_word(); // Public method to be called after construction
+    
 private:
     // Parameter handling
     void declare_parameters();

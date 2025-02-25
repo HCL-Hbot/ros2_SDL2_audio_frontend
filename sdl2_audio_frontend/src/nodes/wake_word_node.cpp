@@ -17,45 +17,34 @@ namespace sdl2_audio_frontend
         // Declare parameters
         declare_parameters();
 
-        // Initialize Lowwi runtime
-        // ww_runtime_ = std::make_unique<CLFML::LOWWI::Lowwi>();
-        // // Get package directory to locate models
-        // try {
-        //     const std::string package_path = ament_index_cpp::get_package_share_directory("sdl2_audio_frontend");
-        //     models_dir_ = package_path + "/models";
-        //     RCLCPP_INFO(get_logger(), "Models directory: %s", models_dir_.c_str());
-        // } catch (const std::exception& e) {
-        //     RCLCPP_ERROR(get_logger(), "Failed to get package directory: %s", e.what());
-        //     RCLCPP_WARN(get_logger(), "Falling back to local 'models' directory");
-        //     models_dir_ = "models";
-        // }
-
         try
         {
             // Get the package share directory
             const std::string package_path = ament_index_cpp::get_package_share_directory("sdl2_audio_frontend");
             models_dir_ = package_path + "/models";
             RCLCPP_INFO(get_logger(), "Models directory: %s", models_dir_.c_str());
-            std::string target_dir = "models";  // Relative to working directory
+            std::string target_dir = "models"; // Relative to working directory
 
             // Create directory if it doesn't exist
             std::filesystem::create_directories(target_dir);
 
             // Copy all files from source to target
-            for (const auto& entry : std::filesystem::recursive_directory_iterator(models_dir_)) {
-                if (entry.is_regular_file()) {
+            for (const auto &entry : std::filesystem::recursive_directory_iterator(models_dir_))
+            {
+                if (entry.is_regular_file())
+                {
                     std::filesystem::path target = target_dir / entry.path().lexically_relative(models_dir_);
                     std::filesystem::create_directories(target.parent_path());
-                    std::filesystem::copy_file(entry.path(), target, 
-                                            std::filesystem::copy_options::overwrite_existing);
+                    std::filesystem::copy_file(entry.path(), target,
+                                               std::filesystem::copy_options::overwrite_existing);
                 }
             }
 
-            // Set the environment variable for Lowwi's core models
-            setenv("LOWWI_MODEL_DIR", models_dir_.c_str(), 1);
+            // // Set the environment variable for Lowwi's core models
+            // setenv("LOWWI_MODEL_DIR", models_dir_.c_str(), 1);
 
-            // Initialize Lowwi runtime after setting the models path
-            ww_runtime_ = std::make_unique<CLFML::LOWWI::Lowwi>();
+            // // Initialize Lowwi runtime after setting the models path
+            // ww_runtime_ = std::make_unique<CLFML::LOWWI::Lowwi>();
         }
         catch (const std::exception &e)
         {
@@ -100,6 +89,42 @@ namespace sdl2_audio_frontend
 
     WakeWordNode::~WakeWordNode() = default;
 
+    void WakeWordNode::configure_wake_word()
+    {
+        try
+        {
+            // Create full path to the model
+            std::filesystem::path model_path = std::filesystem::path(models_dir_) / model_filename_;
+            RCLCPP_INFO(get_logger(), "Using wake word model: %s", model_path.string().c_str());
+
+            if (!std::filesystem::exists(model_path))
+            {
+                RCLCPP_ERROR(get_logger(), "Model file not found: %s", model_path.string().c_str());
+                throw std::runtime_error("Wake word model file not found");
+            }
+
+            // Configure wake word detection
+            CLFML::LOWWI::Lowwi_word_t ww;
+            ww.phrase = wake_word_phrase_;
+            ww.model_path = model_path;
+            ww.threshold = confidence_threshold_;
+            ww.min_activations = static_cast<float>(min_activations_);
+            ww.refractory = refractory_period_;
+
+            ww.cbfunc = &WakeWordNode::wake_word_detected_static;
+            ww.cb_arg = std::static_pointer_cast<void>(shared_from_this());
+
+            // Add to wakeword runtime
+            ww_runtime_->add_wakeword(ww);
+
+            RCLCPP_INFO(get_logger(), "Wake word configured with phrase: %s", wake_word_phrase_.c_str());
+        }
+        catch (const std::exception &e)
+        {
+            RCLCPP_ERROR(get_logger(), "Failed to configure wake word: %s", e.what());
+        }
+    }
+
     void WakeWordNode::declare_parameters()
     {
         declare_parameter("model_filename", "example_wakewords/hey_mycroft.onnx");
@@ -108,7 +133,7 @@ namespace sdl2_audio_frontend
         declare_parameter("min_activations", 5);
         declare_parameter("refractory_period", 20);
         declare_parameter("max_buffer_size_seconds", 5.0);
-        declare_parameter("sample_rate", 16000);  // Must match the model's expected rate
+        declare_parameter("sample_rate", 16000); // Must match the model's expected rate
     }
 
     void WakeWordNode::load_parameters()
@@ -120,37 +145,13 @@ namespace sdl2_audio_frontend
         get_parameter("min_activations", min_activations_);
         get_parameter("refractory_period", refractory_period_);
 
-        // Create full path to the model
-        std::filesystem::path model_path = std::filesystem::path(models_dir_) / model_filename_;
-        RCLCPP_INFO(get_logger(), "Using wake word model: %s", model_path.string().c_str());
-
-        if (!std::filesystem::exists(model_path))
-        {
-            RCLCPP_ERROR(get_logger(), "Model file not found: %s", model_path.string().c_str());
-            throw std::runtime_error("Wake word model file not found");
-        }
-
         int sample_rate = get_parameter("sample_rate").as_int();
-        if (sample_rate != 16000) {
+        if (sample_rate != 16000)
+        {
             RCLCPP_WARN(get_logger(), "Sample rate %d Hz may not work with wake word model (expected 16000 Hz)", sample_rate);
         }
         double buffer_seconds = get_parameter("max_buffer_size_seconds").as_double();
-        max_buffer_size_ = static_cast<size_t>(buffer_seconds * 16000.0);  // Assuming 16kHz sample rate        
-
-        // Configure wake word detection
-        CLFML::LOWWI::Lowwi_word_t ww;
-        ww.phrase = wake_word_phrase_;
-        ww.model_path = model_path;
-        ww.threshold = confidence_threshold_;
-        ww.min_activations = static_cast<float>(min_activations_);
-        ww.refractory = refractory_period_;
-
-        // Use a static method as callback and pass the node instance as the argument
-        ww.cbfunc = &WakeWordNode::wake_word_detected_static;
-        ww.cb_arg = std::static_pointer_cast<void>(Node::shared_from_this()); // Use Node's shared_from_this
-
-        // Add to wakeword runtime
-        ww_runtime_->add_wakeword(ww);
+        max_buffer_size_ = static_cast<size_t>(buffer_seconds * 16000.0); // Assuming 16kHz sample rate
     }
 
     void WakeWordNode::vad_callback(const std_msgs::msg::Bool::SharedPtr msg)
@@ -258,6 +259,8 @@ int main(int argc, char *argv[])
     try
     {
         auto node = std::make_shared<sdl2_audio_frontend::WakeWordNode>();
+
+        node->configure_wake_word();
 
         // Use multithreaded executor with 2 threads
         rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), 2);
