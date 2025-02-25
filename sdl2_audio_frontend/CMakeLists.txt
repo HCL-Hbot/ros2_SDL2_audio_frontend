@@ -131,16 +131,16 @@ install(TARGETS
 
 install(DIRECTORY 
     "${Lowwi_SOURCE_DIR}/models"
-    DESTINATION ${CMAKE_CURRENT_LIST_DIR}
+    DESTINATION share/${PROJECT_NAME}
 )
 
-# Custom command to copy models during build (for development)
-add_custom_target(copy_Lowwi_models ALL
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${Lowwi_SOURCE_DIR}/models
-        ${CMAKE_CURRENT_BINARY_DIR}/models
-    COMMENT "Copying models directory to build folder"
-)
+# # Custom command to copy models during build (for development)
+# add_custom_target(copy_Lowwi_models ALL
+#     COMMAND ${CMAKE_COMMAND} -E copy_directory
+#         ${Lowwi_SOURCE_DIR}/models
+#         ${CMAKE_CURRENT_BINARY_DIR}/models
+#     COMMENT "Copying models directory to build folder"
+# )
 
 # Install ONNX Runtime from Lowwi's lib directory
 install(FILES 
