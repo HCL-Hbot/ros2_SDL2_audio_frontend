@@ -81,11 +81,12 @@ ros2 topic list
 /parameter_events
 /rosout
 /voice_detected
+/wake_word_detected
 ```
 You should see at least these topics:
 - /audio/raw (from audio_capture_node)
 - /voice_detected (from vad_node)
-
+- /wake_word_detected (from wake_word_node)
 
 9. You can check the topic published by the VAD node (don’t forget to source the setup script):
 ```bash

@@ -5,3 +5,5 @@ wake_word_node:
     confidence_threshold: 0.5
     min_activations: 5
     refractory_period: 20
+    max_buffer_size_seconds: 5.0
+    sample_rate: 16000

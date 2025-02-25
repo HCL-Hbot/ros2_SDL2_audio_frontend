@@ -9,12 +9,9 @@ namespace sdl2_audio_frontend
     WakeWordNode::WakeWordNode(const rclcpp::NodeOptions &options)
         : Node("wake_word_node", options)
     {
-
-        // Create callback groups
         audio_callback_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
         processing_callback_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
-        // Declare parameters
         declare_parameters();
 
         try
@@ -40,11 +37,8 @@ namespace sdl2_audio_frontend
                 }
             }
 
-            // // Set the environment variable for Lowwi's core models
-            // setenv("LOWWI_MODEL_DIR", models_dir_.c_str(), 1);
-
-            // // Initialize Lowwi runtime after setting the models path
-            // ww_runtime_ = std::make_unique<CLFML::LOWWI::Lowwi>();
+            // Initialize Lowwi runtime after setting the models path
+            ww_runtime_ = std::make_unique<CLFML::LOWWI::Lowwi>();
         }
         catch (const std::exception &e)
         {
@@ -52,7 +46,6 @@ namespace sdl2_audio_frontend
             throw; // Better to fail fast if we can't find our models
         }
 
-        // Load parameters and configure
         load_parameters();
 
         // Set up ROS publishers and subscribers
@@ -76,15 +69,6 @@ namespace sdl2_audio_frontend
             "audio/raw", 10,
             std::bind(&WakeWordNode::audio_callback, this, std::placeholders::_1),
             audio_options);
-
-        // Create timer for processing in a different callback group
-        // Processing every 20ms is a good balance for wake word detection
-        using namespace std::chrono_literals;
-        process_timer_ = create_wall_timer(20ms,
-                                           std::bind(&WakeWordNode::process_queued_audio, this),
-                                           processing_callback_group_);
-
-        RCLCPP_INFO(get_logger(), "Wake word node initialized with phrase: %s", wake_word_phrase_.c_str());
     }
 
     WakeWordNode::~WakeWordNode() = default;
@@ -110,11 +94,10 @@ namespace sdl2_audio_frontend
             ww.threshold = confidence_threshold_;
             ww.min_activations = static_cast<float>(min_activations_);
             ww.refractory = refractory_period_;
-
             ww.cbfunc = &WakeWordNode::wake_word_detected_static;
             ww.cb_arg = std::static_pointer_cast<void>(shared_from_this());
 
-            // Add to wakeword runtime
+            // Add to wakeword runtime  
             ww_runtime_->add_wakeword(ww);
 
             RCLCPP_INFO(get_logger(), "Wake word configured with phrase: %s", wake_word_phrase_.c_str());
@@ -122,6 +105,8 @@ namespace sdl2_audio_frontend
         catch (const std::exception &e)
         {
             RCLCPP_ERROR(get_logger(), "Failed to configure wake word: %s", e.what());
+        } catch (...) {
+            RCLCPP_ERROR(get_logger(), "Unknown exception during wake word configuration");
         }
     }
 
