@@ -1,0 +1,7 @@
+wake_word_node:
+  ros__parameters:
+    model_path: "models/example_wakewords/hey_mycroft.onnx"
+    wake_word_phrase: "Hey Mycroft"
+    confidence_threshold: 0.5
+    min_activations: 5
+    refractory_period: 20

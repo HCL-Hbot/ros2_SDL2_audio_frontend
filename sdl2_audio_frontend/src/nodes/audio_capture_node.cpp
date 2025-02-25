@@ -4,17 +4,23 @@ namespace sdl2_audio_frontend {
 
 AudioCaptureNode::AudioCaptureNode(const rclcpp::NodeOptions& options)
     : Node("audio_capture_node", options) {
-    
+
     // Declare and load parameters
     declare_parameters();
     load_parameters();
 
-    // Initialize SDL audio
+    // Log available audio devices
+    RCLCPP_INFO(get_logger(), "Checking available audio devices...");
     audio_ = std::make_unique<AudioAsync>(buffer_length_ms_);
     
     if (!audio_->init(device_id_, sample_rate_)) {
-        RCLCPP_ERROR(get_logger(), "Failed to initialize audio capture");
-        throw std::runtime_error("Audio initialization failed");
+        RCLCPP_WARN(get_logger(), "Failed to initialize with device_id %d, trying with 0", device_id_);
+        
+        // Try with first available device (index 0)
+        if (!audio_->init(0, sample_rate_)) {
+            RCLCPP_ERROR(get_logger(), "Failed to initialize audio capture");
+            throw std::runtime_error("Audio initialization failed");
+        }
     }
 
     // Create publisher
