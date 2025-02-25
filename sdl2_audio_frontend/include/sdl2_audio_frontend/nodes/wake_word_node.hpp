@@ -23,7 +23,7 @@ private:
     // Callbacks
     void vad_callback(const std_msgs::msg::Bool::SharedPtr msg);
     void audio_callback(const msg::AudioData::SharedPtr msg);
-    void process_audio(const std::vector<float>& audio_data);
+    void process_queued_audio();
     
     // Wake word detection callbacks
     static void wake_word_detected_static(CLFML::LOWWI::Lowwi_ctx_t ctx, std::shared_ptr<void> arg);
@@ -48,6 +48,20 @@ private:
     // State tracking
     bool voice_active_ = false;
     std::vector<float> audio_buffer_;
+
+    // Callback groups for parallel execution
+    rclcpp::CallbackGroup::SharedPtr audio_callback_group_;
+    rclcpp::CallbackGroup::SharedPtr processing_callback_group_;
+    
+    // Timer for processing audio in a separate thread
+    rclcpp::TimerBase::SharedPtr process_timer_;
+    
+    // Audio queue and mutex for thread-safe access
+    std::mutex audio_queue_mutex_;
+    std::deque<std::vector<float>> audio_queue_;
+
+    // Buffer settings
+    size_t max_buffer_size_ = 16000 * 5;  // 5 seconds at 16kHz by default        
 };
 
 } // namespace sdl2_audio_frontend
