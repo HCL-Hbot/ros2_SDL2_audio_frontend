@@ -36,6 +36,20 @@ namespace sdl2_audio_frontend
             const std::string package_path = ament_index_cpp::get_package_share_directory("sdl2_audio_frontend");
             models_dir_ = package_path + "/models";
             RCLCPP_INFO(get_logger(), "Models directory: %s", models_dir_.c_str());
+            std::string target_dir = "models";  // Relative to working directory
+
+            // Create directory if it doesn't exist
+            std::filesystem::create_directories(target_dir);
+
+            // Copy all files from source to target
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(models_dir_)) {
+                if (entry.is_regular_file()) {
+                    std::filesystem::path target = target_dir / entry.path().lexically_relative(models_dir_);
+                    std::filesystem::create_directories(target.parent_path());
+                    std::filesystem::copy_file(entry.path(), target, 
+                                            std::filesystem::copy_options::overwrite_existing);
+                }
+            }
 
             // Set the environment variable for Lowwi's core models
             setenv("LOWWI_MODEL_DIR", models_dir_.c_str(), 1);
