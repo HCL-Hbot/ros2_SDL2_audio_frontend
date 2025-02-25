@@ -117,13 +117,14 @@ bool AudioAsync::init(int capture_id, int playback_id, int sample_rate) {
     } else if (playback_device_) {
         sample_rate_ = playback_spec_obtained.freq;
         SDL_Log("No capture device, using playback sample rate: %d\n", sample_rate_);
-    }
+    } else
+        return false;
 
     // Resize buffers
     capture_buffer_.resize((sample_rate_ * len_ms_) / 1000);
     playback_buffer_.reserve(sample_rate_);  // Reserve 1 second
 
-    return (capture_device_ != 0 || playback_device_ != 0);
+    return true;
 }
 
 bool AudioAsync::resume() {
