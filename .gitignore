@@ -33,6 +33,7 @@
 
 build/
 install/
+lib/
 models/
 log/
 *.pyc

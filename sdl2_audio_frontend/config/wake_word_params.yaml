@@ -7,3 +7,5 @@ wake_word_node:
     refractory_period: 20
     max_buffer_size_seconds: 5.0
     sample_rate: 16000
+    batch_size_ms: 1000
+    processing_interval_ms: 200

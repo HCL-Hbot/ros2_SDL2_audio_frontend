@@ -227,62 +227,65 @@ private:
 #include <memory>
 #include <lowwi.hpp>
 
-namespace sdl2_audio_frontend {
+namespace sdl2_audio_frontend
+{
 
-class WakeWordNode : public rclcpp::Node {  // Remove std::enable_shared_from_this
-public:
-    explicit WakeWordNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
-    ~WakeWordNode();
-    void configure_wake_word(); // Public method to be called after construction
-    
-private:
-    // Parameter handling
-    void declare_parameters();
-    void load_parameters();
+    class WakeWordNode : public rclcpp::Node
+    {
+    public:
+        explicit WakeWordNode(const rclcpp::NodeOptions &options = rclcpp::NodeOptions());
+        ~WakeWordNode();
+        void configure_wake_word(); // Public method to be called after construction
+        void test_with_sine_wave(); // Public method to test wake word detection with a sine wave
 
-    // Callbacks
-    void vad_callback(const std_msgs::msg::Bool::SharedPtr msg);
-    void audio_callback(const msg::AudioData::SharedPtr msg);
-    void process_queued_audio();
-    
-    // Wake word detection callbacks
-    static void wake_word_detected_static(CLFML::LOWWI::Lowwi_ctx_t ctx, std::shared_ptr<void> arg);
-    void wake_word_detected(const CLFML::LOWWI::Lowwi_ctx_t& ctx);
+    private:
+        // Parameter handling
+        void declare_parameters();
+        void load_parameters();
 
-    // Lowwi instance
-    std::unique_ptr<CLFML::LOWWI::Lowwi> ww_runtime_;
-    
-    // ROS communication
-    rclcpp::Subscription<msg::AudioData>::SharedPtr audio_sub_;
-    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr vad_sub_;
-    rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr wake_word_pub_;
-    
-    // Configuration
-    std::string models_dir_;
-    std::string model_filename_;
-    std::string wake_word_phrase_;
-    float confidence_threshold_;
-    int min_activations_;
-    int refractory_period_;
-    
-    // State tracking
-    bool voice_active_ = false;
-    std::vector<float> audio_buffer_;
+        // Callbacks
+        void vad_callback(const std_msgs::msg::Bool::SharedPtr msg);
+        void audio_callback(const msg::AudioData::SharedPtr msg);
+        void process_queued_audio();
 
-    // Callback groups for parallel execution
-    rclcpp::CallbackGroup::SharedPtr audio_callback_group_;
-    rclcpp::CallbackGroup::SharedPtr processing_callback_group_;
-    
-    // Timer for processing audio in a separate thread
-    rclcpp::TimerBase::SharedPtr process_timer_;
-    
-    // Audio queue and mutex for thread-safe access
-    std::mutex audio_queue_mutex_;
-    std::deque<std::vector<float>> audio_queue_;
+        // Wake word detection callbacks
+        static void wake_word_detected_static(CLFML::LOWWI::Lowwi_ctx_t ctx, std::shared_ptr<void> arg);
+        void wake_word_detected(const CLFML::LOWWI::Lowwi_ctx_t &ctx);
 
-    // Buffer settings
-    size_t max_buffer_size_ = 16000 * 5;  // 5 seconds at 16kHz by default        
-};
+        // Lowwi instance
+        std::unique_ptr<CLFML::LOWWI::Lowwi> ww_runtime_;
+
+        // ROS communication
+        rclcpp::Subscription<msg::AudioData>::SharedPtr audio_sub_;
+        rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr vad_sub_;
+        rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr wake_word_pub_;
+
+        // Configuration
+        std::string models_dir_;
+        std::string model_filename_;
+        std::string wake_word_phrase_;
+        float confidence_threshold_;
+        int min_activations_;
+        int refractory_period_;
+
+        // State tracking
+        bool voice_active_ = false;
+        std::vector<float> audio_buffer_;
+
+        // Callback groups for parallel execution
+        rclcpp::CallbackGroup::SharedPtr audio_callback_group_;
+        rclcpp::CallbackGroup::SharedPtr processing_callback_group_;
+
+        // Timer for processing audio in a separate thread
+        rclcpp::TimerBase::SharedPtr process_timer_;
+
+        // Audio queue and mutex for thread-safe access
+        std::mutex audio_queue_mutex_;
+        std::deque<std::vector<float>> audio_queue_;
+
+        // Buffer settings
+        size_t max_buffer_size_, batch_size_samples_;
+    };
 
 } // namespace sdl2_audio_frontend
 
@@ -921,7 +924,9 @@ namespace sdl2_audio_frontend
             ww.cbfunc = &WakeWordNode::wake_word_detected_static;
             ww.cb_arg = std::static_pointer_cast<void>(shared_from_this());
 
-            // Add to wakeword runtime  
+            ww.debug = true; // Add this line to enable model-level debugging
+
+            // Add to wakeword runtime
             ww_runtime_->add_wakeword(ww);
 
             RCLCPP_INFO(get_logger(), "Wake word configured with phrase: %s", wake_word_phrase_.c_str());
@@ -929,7 +934,9 @@ namespace sdl2_audio_frontend
         catch (const std::exception &e)
         {
             RCLCPP_ERROR(get_logger(), "Failed to configure wake word: %s", e.what());
-        } catch (...) {
+        }
+        catch (...)
+        {
             RCLCPP_ERROR(get_logger(), "Unknown exception during wake word configuration");
         }
     }
@@ -942,7 +949,9 @@ namespace sdl2_audio_frontend
         declare_parameter("min_activations", 5);
         declare_parameter("refractory_period", 20);
         declare_parameter("max_buffer_size_seconds", 5.0);
-        declare_parameter("sample_rate", 16000); // Must match the model's expected rate
+        declare_parameter("sample_rate", 16000);          // Must match the model's expected rate!
+        declare_parameter("batch_size_ms", 1000);         // Process 1000ms of audio at once
+        declare_parameter("processing_interval_ms", 100); // Process the queue every 100ms
     }
 
     void WakeWordNode::load_parameters()
@@ -953,29 +962,54 @@ namespace sdl2_audio_frontend
         get_parameter("confidence_threshold", confidence_threshold_);
         get_parameter("min_activations", min_activations_);
         get_parameter("refractory_period", refractory_period_);
+        int batch_size_ms = get_parameter("batch_size_ms").as_int();
+        int processing_interval_ms = get_parameter("processing_interval_ms").as_int();
 
         int sample_rate = get_parameter("sample_rate").as_int();
         if (sample_rate != 16000)
         {
             RCLCPP_WARN(get_logger(), "Sample rate %d Hz may not work with wake word model (expected 16000 Hz)", sample_rate);
         }
-        double buffer_seconds = get_parameter("max_buffer_size_seconds").as_double();
-        max_buffer_size_ = static_cast<size_t>(buffer_seconds * 16000.0); // Assuming 16kHz sample rate
+        batch_size_samples_ = static_cast<size_t>((sample_rate * batch_size_ms) / 1000);
+        double buffer_seconds = get_parameter("max_buffer_size_seconds").as_double(); // Buffer should be at least 3x batch size for good overlap
+        max_buffer_size_ = static_cast<size_t>(buffer_seconds * sample_rate);
+
+        process_timer_ = create_wall_timer(
+            std::chrono::milliseconds(processing_interval_ms),
+            std::bind(&WakeWordNode::process_queued_audio, this),
+            processing_callback_group_); // Use separate callback group for processing
+
+        RCLCPP_INFO(get_logger(), "Wake word batch processing: %d ms batches, %d ms interval",
+                    batch_size_ms, processing_interval_ms);
     }
 
     void WakeWordNode::vad_callback(const std_msgs::msg::Bool::SharedPtr msg)
     {
+        bool previous_state = voice_active_;
         voice_active_ = msg->data;
 
-        if (!voice_active_)
+        // Add debug when state changes
+        if (previous_state != voice_active_)
+        {
+            RCLCPP_DEBUG(get_logger(), "Voice activity state changed: %s",
+                         voice_active_ ? "ACTIVE" : "INACTIVE");
+        }
+
+        if (!voice_active_ && previous_state)
         {
             // Voice activity ended, clear audio buffer
+            size_t buffer_size = audio_buffer_.size();
             audio_buffer_.clear();
+            RCLCPP_DEBUG(get_logger(), "Voice activity ended, cleared %zu samples from buffer", buffer_size);
         }
     }
 
     void WakeWordNode::audio_callback(const msg::AudioData::SharedPtr msg)
     {
+
+        RCLCPP_DEBUG(get_logger(), "Received audio data: %d samples at %d Hz",
+                     msg->samples, msg->sample_rate);
+
         // Convert raw audio bytes to float samples
         std::vector<float> audio_samples(msg->samples);
 
@@ -987,8 +1021,25 @@ namespace sdl2_audio_frontend
             // Only queue data if voice is active
             if (voice_active_)
             {
+                RCLCPP_DEBUG(get_logger(), "Voice active, queueing %zu audio samples", audio_samples.size());
+
+                float energy = 0.0f;
+                for (float sample : audio_samples)
+                {
+                    energy += sample * sample;
+                }
+                energy /= audio_samples.size();
+                RCLCPP_DEBUG(get_logger(), "Audio energy: %f", energy);
+
                 std::lock_guard<std::mutex> lock(audio_queue_mutex_);
                 audio_queue_.push_back(std::move(audio_samples));
+
+                RCLCPP_DEBUG(get_logger(), "Audio queue size: %zu batches", audio_queue_.size());
+            }
+            else
+            {
+                // Add debug when voice isn't active
+                RCLCPP_DEBUG(get_logger(), "Voice not active, discarding audio samples");
             }
         }
         else
@@ -1009,6 +1060,8 @@ namespace sdl2_audio_frontend
                 return; // Nothing to process
             }
 
+            RCLCPP_DEBUG(get_logger(), "Processing audio queue with %zu batches", audio_queue_.size());
+
             // Move all queued audio to our local vector
             while (!audio_queue_.empty())
             {
@@ -1017,21 +1070,92 @@ namespace sdl2_audio_frontend
             }
         }
 
-        // Process each batch (potentially time-consuming)
+        // Calculate total samples
+        size_t total_samples = 0;
+        for (const auto &batch : batches_to_process)
+        {
+            total_samples += batch.size();
+        }
+        RCLCPP_DEBUG(get_logger(), "Processing %zu audio batches with %zu total samples",
+                     batches_to_process.size(), total_samples);
+
+        // Add all batches to the circular buffer
         for (const auto &audio_data : batches_to_process)
         {
-            // Add to continuous buffer if needed
+            size_t prev_size = audio_buffer_.size();
             audio_buffer_.insert(audio_buffer_.end(), audio_data.begin(), audio_data.end());
 
-            // Limit buffer size if needed
-            if (audio_buffer_.size() > max_buffer_size_)
+            RCLCPP_DEBUG(get_logger(), "Audio buffer size: %zu samples (added %zu)",
+                         audio_buffer_.size(), audio_buffer_.size() - prev_size);
+        }
+
+        // Limit buffer size if needed
+        if (audio_buffer_.size() > max_buffer_size_)
+        {
+            size_t samples_to_remove = audio_buffer_.size() - max_buffer_size_;
+            RCLCPP_DEBUG(get_logger(), "Trimming buffer, removing %zu older samples", samples_to_remove);
+
+            audio_buffer_.erase(audio_buffer_.begin(),
+                                audio_buffer_.begin() + samples_to_remove);
+        }
+
+        // Only process if we have enough samples
+        if (audio_buffer_.size() >= batch_size_samples_)
+        {
+            // Run on the entire batch (this is a big change from the original approach)
+            std::vector<float> process_batch;
+
+            // Take the most recent batch_size_samples_ from the buffer
+            size_t start_idx = audio_buffer_.size() >= batch_size_samples_ ? audio_buffer_.size() - batch_size_samples_ : 0;
+
+            process_batch.assign(
+                audio_buffer_.begin() + start_idx,
+                audio_buffer_.end());
+
+            RCLCPP_DEBUG(get_logger(), "Running wake word detection on %zu samples batch",
+                         process_batch.size());
+
+            float min_val = 1.0f, max_val = -1.0f;
+            for (float sample : process_batch)
             {
-                audio_buffer_.erase(audio_buffer_.begin(),
-                                    audio_buffer_.begin() + (audio_buffer_.size() - max_buffer_size_));
+                min_val = std::min(min_val, sample);
+                max_val = std::max(max_val, sample);
+            }
+            RCLCPP_INFO(get_logger(), "Audio range before detection: min=%f, max=%f", min_val, max_val);
+
+            // Run the model on the combined larger batch
+            // ww_runtime_->run(process_batch);
+
+            // In process_queued_audio, before running the model
+            std::vector<float> normalized_audio = process_batch;
+
+            // Apply normalization similar to what the LOWWI demo does
+            float max_value = 0.0f;
+            for (float sample : normalized_audio)
+            {
+                max_value = std::max(max_value, std::abs(sample));
             }
 
-            // Run wake word detection (potentially expensive operation)
-            ww_runtime_->run(audio_data);
+            if (max_value > 0.0f)
+            {
+                // Scale to range [-0.95, 0.95] to avoid clipping
+                float scale = 0.95f / max_value;
+                for (float &sample : normalized_audio)
+                {
+                    sample *= scale;
+                }
+            }
+
+            RCLCPP_DEBUG(get_logger(), "Running wake word detection on %zu normalized samples batch",
+                         normalized_audio.size());
+
+            // Run the model on the normalized audio
+            ww_runtime_->run(normalized_audio);
+        }
+        else
+        {
+            RCLCPP_DEBUG(get_logger(), "Not enough samples for a full batch (%zu < %zu)",
+                         audio_buffer_.size(), batch_size_samples_);
         }
     }
 
@@ -1039,6 +1163,11 @@ namespace sdl2_audio_frontend
     {
         // Convert shared_ptr back to node instance
         auto node_instance = std::static_pointer_cast<WakeWordNode>(arg);
+
+        RCLCPP_DEBUG(node_instance->get_logger(),
+                     "Wake word static callback triggered with phrase: '%s', confidence: %.2f%%",
+                     ctx.phrase.c_str(), ctx.confidence);
+
         node_instance->wake_word_detected(ctx);
     }
 
@@ -1048,13 +1177,18 @@ namespace sdl2_audio_frontend
                     "Wake word detected: '%s' with confidence %.2f%%",
                     ctx.phrase.c_str(), ctx.confidence);
 
+        // Add debug about buffer state
+        RCLCPP_DEBUG(get_logger(), "Audio buffer at detection: %zu samples", audio_buffer_.size());
+
         // Publish wake word detection event
         auto msg = std::make_unique<std_msgs::msg::Bool>();
         msg->data = true;
         wake_word_pub_->publish(std::move(msg));
+        RCLCPP_DEBUG(get_logger(), "Published wake word detection message");
 
         // Clear audio buffer after detection
         audio_buffer_.clear();
+        RCLCPP_DEBUG(get_logger(), "Cleared audio buffer after detection");
     }
 
 } // namespace sdl2_audio_frontend

@@ -15,6 +15,7 @@ public:
     explicit WakeWordNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
     ~WakeWordNode();
     void configure_wake_word(); // Public method to be called after construction
+    void test_with_wav_file(std::string wav_path);
     
 private:
     // Parameter handling
@@ -29,6 +30,9 @@ private:
     // Wake word detection callbacks
     static void wake_word_detected_static(CLFML::LOWWI::Lowwi_ctx_t ctx, std::shared_ptr<void> arg);
     void wake_word_detected(const CLFML::LOWWI::Lowwi_ctx_t& ctx);
+
+    // helpers
+    void save_audio_sample(const std::vector<float> &audio);
 
     // Lowwi instance
     std::unique_ptr<CLFML::LOWWI::Lowwi> ww_runtime_;
@@ -62,7 +66,7 @@ private:
     std::deque<std::vector<float>> audio_queue_;
 
     // Buffer settings
-    size_t max_buffer_size_ = 16000 * 5;  // 5 seconds at 16kHz by default        
+    size_t max_buffer_size_, batch_size_samples_; 
 };
 
 } // namespace sdl2_audio_frontend

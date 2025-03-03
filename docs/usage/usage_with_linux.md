@@ -102,3 +102,8 @@ data: false
 data: false
 ...
 ```
+
+Troubleshooting
+```bash
+ros2 run sdl2_audio_frontend wake_word_node --ros-args --log-level debug
+```

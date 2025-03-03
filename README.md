@@ -21,3 +21,8 @@ The nodes are intended to provide input to conversation manager package.
 - [ ] echo cancellation when using audio_playback and audio_capture simultaneously
 - [ ] noise suppression
 - [ ] more robust wake_word_node that accounts for Dutch speakers, with different dialects 
+- [ ] Set all node parameters that consider time in _ms
+
+1. It seems the Lowwi library is trying to find the onnx files in a hardcoded "models" directory. How about providing a environment variable to point to the right path?
+2. I am very much in favor of providing params.yaml files to set node parameters
+3. MultiThreadedExecutor seems useful for processing queued audio in a separate thread managed by ROS

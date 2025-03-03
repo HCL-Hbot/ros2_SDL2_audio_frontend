@@ -78,6 +78,7 @@ target_link_libraries(audio_capture_node
 ament_target_dependencies(audio_capture_node
   rclcpp
   std_msgs
+  ament_index_cpp
 )
 
 # VAD Node
@@ -93,6 +94,7 @@ target_link_libraries(vad_node
 ament_target_dependencies(vad_node
   rclcpp
   std_msgs
+  ament_index_cpp
 )
 
 # Wake Word Node
