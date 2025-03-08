@@ -73,6 +73,7 @@ target_link_libraries(audio_capture_node
   sdl2_audio_utils
   ${SDL2_LIBRARIES}  
   "${cpp_typesupport_target}"
+  ncurses
 )
 
 ament_target_dependencies(audio_capture_node

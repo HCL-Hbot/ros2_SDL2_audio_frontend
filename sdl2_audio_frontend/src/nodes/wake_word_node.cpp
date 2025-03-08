@@ -262,6 +262,7 @@ namespace sdl2_audio_frontend
         test_ww.phrase = "Hey Mycroft";
         test_ww.model_path = std::filesystem::path("models/example_wakewords/hey_mycroft.onnx"); // Use the path expected by Lowwi
         test_ww.cbfunc = wakeword_callback;
+        test_ww.min_activations = 1;
 
         // test_ww.threshold = 0.5f;                                         // Use exact values from demo_mic.cpp
         // test_ww.min_activations = 5.0f;
@@ -282,7 +283,7 @@ namespace sdl2_audio_frontend
         // Run detection on the test audio
         RCLCPP_INFO(get_logger(), "Running wake word detection on test data; should activate!");
         test_runtime->run(audio_samples);
-
+        test_runtime->run(audio_samples);
         // std::lock_guard<std::mutex> lock(audio_queue_mutex_);
         // audio_queue_.push_back(std::move(audio_samples));
 
